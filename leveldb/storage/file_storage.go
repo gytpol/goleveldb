@@ -76,7 +76,6 @@ type fileStorage struct {
 	readOnly bool
 
 	mu      sync.Mutex
-	flock   fileLock
 	slock   *fileStorageLock
 	logw    *os.File
 	logSize int64
@@ -104,22 +103,10 @@ func OpenFile(path string, readOnly bool) (Storage, error) {
 		return nil, err
 	}
 
-	flock, err := newFileLock(filepath.Join(path, "LOCK"), readOnly)
-	if err != nil {
-		return nil, err
-	}
-
-	defer func() {
-		if err != nil {
-			if ferr := flock.release(); ferr != nil {
-				err = fmt.Errorf("error opening file (%v); error unlocking file (%v)", err, ferr)
-			}
-		}
-	}()
-
 	var (
 		logw    *os.File
 		logSize int64
+		err     error
 	)
 	if !readOnly {
 		logw, err = os.OpenFile(filepath.Join(path, "LOG"), os.O_WRONLY|os.O_CREATE, 0644)
@@ -136,7 +123,6 @@ func OpenFile(path string, readOnly bool) (Storage, error) {
 	fs := &fileStorage{
 		path:     path,
 		readOnly: readOnly,
-		flock:    flock,
 		logw:     logw,
 		logSize:  logSize,
 	}
@@ -578,7 +564,7 @@ func (fs *fileStorage) Close() error {
 	if fs.logw != nil {
 		fs.logw.Close()
 	}
-	return fs.flock.release()
+	return nil
 }
 
 type fileWrap struct {
